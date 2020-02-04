@@ -1,4 +1,5 @@
 from urllib.request import urlopen
+import requests
 from urllib.error import HTTPError
 from urllib.error import URLError
 from html.parser import HTMLParser
@@ -8,19 +9,15 @@ import re
 import read_write
 from bs4 import BeautifulSoup as bs
 
-#url = 'https://www.amazon.in/gp/product/B07X1KT6LW/ref=s9_acss_bw_ln_x_1_11_w?pf_rd_m=A1K21FY43GMZF8&pf_rd_s=merchandised-search-leftnav&pf_rd_r=MN7PBK9JRKNQXQ86KFSN&pf_rd_t=101&pf_rd_p=2385127f-71dd-4475-be35-f9f1e6f2410b&pf_rd_i=1389401031'
-url = 'https://www.amazon.in/SanDisk-Cruzer-Blade-Flash-Drive/dp/B005FYNT3G/ref=olp_product_details?_encoding=UTF8&me=  '
-#url='https://www.amazon.in/Nokia-105-2019-Single-Black/dp/B07YYNX5X6/ref=sr_1_4?crid=7RHHJSPWTJUZ&keywords=nokia+mobile+phone&qid=1580718816&s=electronics&sprefix=nokia+m%2Celectronics%2C325&sr=1-4'
+url = 'https://www.amazon.in/Nokia-105-2019-Single-Black/dp/B07YYNX5X6/ref=sr_1_4?crid=7RHHJSPWTJUZ&keywords=nokia%2Bmobile%2Bphone&qid=1580718816&s=electronics&sprefix=nokia%2Bm%2Celectronics%2C325&sr=1-4&th=1'
+#url = 'https://www.amazon.in/Nokia-105-2019-Single-Black/dp/B07YYNLCD2/ref=sr_1_4?crid=7RHHJSPWTJUZ&keywords=nokia%2Bmobile%2Bphone&qid=1580718816&s=electronics&sprefix=nokia%2Bm%2Celectronics%2C325&sr=1-4&th=1'
+#url='https://www.amazon.in/Nokia-105-2019-Single-Black/dp/B07YYMYXVD/ref=sr_1_4?crid=7RHHJSPWTJUZ&keywords=nokia%2Bmobile%2Bphone&qid=1580718816&s=electronics&sprefix=nokia%2Bm%2Celectronics%2C325&sr=1-4&th=1'
 resp = ''
-try:
-    resp = urlopen(url,timeout=5)
-except HTTPError as e:
-    print(e)
-except URLError as e:
-    print(e)
-else:
+headers = {"Authority":"www.amazon.in", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"}
+resp = requests.get(url, headers=headers)
+if resp.status_code == 200:
     print('Crawler running...!!')
-    productpage = bs(resp.read(), 'lxml')
+    productpage = bs(resp.content, "lxml")
     name = productpage.h1.get_text()
     product.name = name.strip()
 
@@ -32,12 +29,14 @@ else:
     product.discount = discount.replace("You Save: ", "").strip()
 
     imagediv = productpage.find('div', {'id':'imgTagWrapperId'})
-    mainimage = imagediv.img['src'].title()
+    mainimage = imagediv.img['data-old-hires'].title()
     product.image = mainimage.lower()
     otherimage = imagediv.img['data-a-dynamic-image'].title()
     image = otherimage.lower()
     altimages = re.findall("\"(.*?)\":", str(image))
     product.altimages = altimages
+    if product.image == '':
+        product.image = altimages[0]
 
     #nextpage.a['href'].title())
     #images = productpage.find("img", {'id':'landingImage'})
@@ -49,10 +48,10 @@ else:
         selectedcolor = colordiv.find('span', {'class' : 'selection'}).get_text()
         selectedcolor = selectedcolor.strip()
 
-    selectedsize = 'size:' + productpage.find('span', {'class': 'selection'}).text.strip()
+    selectedsize = productpage.find('span', {'class': 'selection'}).text.strip()
     selectedsize = selectedsize.replace("\n", "").replace(" ", "")
-    if not selectedcolor:
-        product.selectedvariant = selectedcolor + " : " + selectedsize
+    if selectedcolor != None:
+        product.selectedvariant = selectedcolor
     else:
         product.selectedvariant = selectedsize
 
@@ -72,9 +71,14 @@ else:
     extrainfo = productpage.find('div', {'id': 'productDescription'}).text.strip()
 
     maininfo = info + extrainfo
-    product.info = maininfo.replace("\t", "")
+    product.info = maininfo.replace("\n", "")
 
     product.paymentoffers = productpage.find('ul', {'class': 'a-unordered-list a-vertical a-spacing-small'}).text.strip()
+    product.paymentoffers = product.paymentoffers.replace("Here's how", "")
+    product.paymentoffers = product.paymentoffers.replace("\n" , "")
+    product.paymentoffers = product.paymentoffers.replace("\t" , "")
+
+    product.info = product.info.replace("\t", "")
 
     pid = re.search("\"currentAsin\"\\s*:\\s*\"(.*)\"", str(productpage))
     product.productid = pid[1]
@@ -83,7 +87,7 @@ else:
     #product.printProductDetails(product)
 
     #write product details to file  =====>>>
-    read_write.save_product_details(product, 'Output.txt')
+    #read_write.save_product_details(product, 'Output.csv')
 
 
     #getting Next pages seller
@@ -97,7 +101,8 @@ else:
     def parseSellerDetails(sellerurl):
         try:
             #print("page 1 : " + sellerurl)
-            sellerpage = urlopen(sellerurl)
+            req = requests.get(sellerurl, headers=headers)
+            sellerpage = req
         except HTTPError as e:
             print('Error while parsing seller: ')
             print(e)
@@ -105,7 +110,7 @@ else:
             print('Error while parsing seller: ')
             print(e)
         else:
-            sellerObj = bs(sellerpage.read(), 'lxml')
+            sellerObj = bs(sellerpage.content, 'lxml')
             sellerdivs = sellerObj.find_all('div', {'class' : 'a-row a-spacing-mini olpOffer'})
 
             #if len(pages) > 3:
@@ -125,7 +130,8 @@ else:
                 seller.price = spandiv[0].text.strip()
                 seller.name = sel.find('h3', {'class':'a-spacing-none olpSellerName'}).text.strip()
                 #seller.printSellerDetails(seller)
-                read_write.save_seller_details(seller, "output.txt")
+                read_write.save_product_details(product, seller, 'Output.csv')
+                #read_write.save_seller_details(seller, "output.csv")
                 #break
     #pages = re.search("New\\\\s*\\((\\\\d+)\\)\\\\s*from", productpage)
     #print(pages)
@@ -145,7 +151,7 @@ else:
         parseSellerDetails(nexturl)
 
 
-    print("Crawler stopped plz check Output.txt file")
+    print("Crawler stopped plz check Output.csv file")
 
     #sellerDiv = productpage.find('div', {'id': 'olp-upd-new-freeshipping'})
     #seller = sellerDiv.find('a', href=True)
@@ -155,3 +161,5 @@ else:
 
      #C:\Users\Vaibhav\PycharmProjects\amazon_scraping\product_details.txt
     #read_write.read_product_details('prod')
+else:
+    print("Status code : "+  str(resp.status_code))
